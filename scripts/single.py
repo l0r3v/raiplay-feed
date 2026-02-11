@@ -4,6 +4,7 @@ import tempfile
 from datetime import datetime as dt
 from itertools import chain
 from urllib.parse import urljoin
+import argparse
 
 import requests
 from feedendum import Feed, FeedItem, to_rss_string
@@ -68,9 +69,10 @@ def _iter_episode_like_nodes(node):
 
 
 class RaiParser:
-    def __init__(self, url: str, folderPath: str) -> None:
+    def __init__(self, url: str, folderPath: str, only_today: bool = False) -> None:
         self.url = url.rstrip("/")
         self.folderPath = folderPath
+        self.only_today = only_today
 
         self.session = requests.Session()
         self.session.headers.update(
@@ -113,6 +115,9 @@ class RaiParser:
 
         feed.items = []
 
+        # Prendo la data di oggi per confrontarla con quella degli episodi 
+        today_date = dt.now().date()
+
         # Estrazione episodi robusta (non dipende solo da rdata["block"]["cards"])
         for item in _iter_episode_like_nodes(rdata):
             # audio dict
@@ -124,13 +129,19 @@ class RaiParser:
             if not page_url:
                 continue
 
+            parsed_date = _datetime_parser(track_info.get("date") or track_info.get("publish_date") or item.get("date"))
+
+            if self.only_today:
+                if parsed_date.date() != today_date:
+                    continue
+
             title = item.get("toptitle") or item.get("title") or track_info.get("title") or "Senza titolo"
             uniq = item.get("uniquename") or track_info.get("uniquename") or page_url
 
             fitem = FeedItem()
             fitem.title = title
             fitem.id = "giuliomagnifico-raiplay-feed-" + str(uniq)
-            fitem.update = _datetime_parser(track_info.get("date") or track_info.get("publish_date") or item.get("date"))
+            fitem.update = parsed_date
             fitem.url = urljoin(self.url + "/", page_url)
             fitem.content = item.get("description") or track_info.get("description") or title
 
@@ -167,8 +178,8 @@ class RaiParser:
 
             feed.items.append(fitem)
 
-        # ordina e dedup (per sicurezza)
-        feed.items.sort(key=lambda x: x.update, reverse=True)
+        # Se è un feed daily non invertiamo l'ordine
+        feed.items.sort(key=lambda x: x.update, reverse=not (self.only_today))
         seen = set()
         deduped = []
         for it in feed.items:
@@ -193,17 +204,17 @@ def atomic_write(filename, content: str):
 
 
 def main():
-    import argparse
-
     parser = argparse.ArgumentParser(
         description="Genera RSS da RaiPlaySound",
         epilog="Info su https://github.com/giuliomagnifico/raiplay-feed/"
     )
     parser.add_argument("url", help="URL podcast RaiPlaySound")
     parser.add_argument("-f", "--folder", default=".", help="Cartella output")
+    parser.add_argument("--today", action="store_true", help="Scarica SOLO gli episodi di oggi")
+
     args = parser.parse_args()
 
-    RaiParser(args.url, args.folder).process()
+    RaiParser(args.url, args.folder, only_today=args.today).process()
 
 
 if __name__ == "__main__":

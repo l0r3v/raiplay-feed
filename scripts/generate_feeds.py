@@ -46,12 +46,32 @@ PROGRAMS = {
 for name, url in PROGRAMS.items():
     print(f"Generazione feed per {name}...")
     try:
-        rai_parser = RaiParser(url, ".")
+        rai_parser = RaiParser(url, ".", only_today=False)
         rai_parser.process()
         original_file = f"{name}.xml"
+        print(f"nome originale file: {original_file}")
+
         if not os.path.exists(original_file):
             print(f"Errore: Il file {original_file} non è stato generato correttamente!")
             continue
+        new_file = f"feed_{name}.xml"
+        os.rename(original_file, new_file)
+        print(f"Feed XML salvato correttamente: {new_file}")
+    except Exception as e:
+        print(f"Errore generico per {name}: {e}")
+
+# Generazione di feed solo degli episodi usciti oggi in ordine cronologico.
+for name, url in PROGRAMS.items():
+    print(f"Generazione feed giornaliero e ordinato per {name}...")
+    try:
+        rai_parser = RaiParser(url, ".", only_today=True)
+        rai_parser.process()
+        original_file = f"{name}.xml"
+        print(f"nome originale file: {original_file}")
+        if not os.path.exists(original_file):
+            print(f"Errore: Il file {original_file} non è stato generato correttamente!")
+            continue
+        name = name + "-daily" #aggiungo suffisso ai file xml
         new_file = f"feed_{name}.xml"
         os.rename(original_file, new_file)
         print(f"Feed XML salvato correttamente: {new_file}")
